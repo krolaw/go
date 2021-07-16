@@ -6,18 +6,29 @@
 // code but require careful thought to use correctly.
 package subtle
 
+import (
+	"unsafe"
+)
+
 // ConstantTimeCompare returns 1 if the two slices, x and y, have equal contents
 // and 0 otherwise. The time taken is a function of the length of the slices and
 // is independent of the contents.
 func ConstantTimeCompare(x, y []byte) int {
-	if len(x) != len(y) {
-		return 0
-	}
+	// Mark as failed if lengths do not match, but do not return early
+	// v == 0 if len(x) == len(y), 1 otherwise
+	d := byte(ConstantTimeEq(int32(len(x)), int32(len(y))) ^ 1)
+	v := d
 
-	var v byte
-
+	// If there's a length mismatch, x is compared against itself,
+	// but starting from failed state (v!=0).
+	// Therefore if x is the secret, time is always constant.
+	// If x is user input, time is proportional to user input length.
+	// Neither allows length of secret to be deduced.
 	for i := 0; i < len(x); i++ {
-		v |= x[i] ^ y[i]
+		// v |= x[i] ^ z[i] where z = y if len(x) == len(y), x otherwise
+		v |= x[i] ^ (*(*[]byte)(unsafe.Pointer(
+			(^(uintptr(d)-1)&uintptr(unsafe.Pointer(&x)) |
+				(uintptr(d)-1)&uintptr(unsafe.Pointer(&y))))))[i]
 	}
 
 	return ConstantTimeByteEq(v, 0)
